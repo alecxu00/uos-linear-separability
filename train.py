@@ -158,15 +158,15 @@ def main():
                           lr=lr,
                           momentum=0.9,
                           weight_decay=0.0)
-    scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, eta_min=lr/1000)
-
+    #scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, eta_min=lr/1000)
+    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[epochs//3, 2*epochs//3], gamma=0.1)
     # Training
     patience = args.patience
     early_stopping = EarlyStopping(patience=patience)
 
     train_losses = []
     train_accs = []
-    
+
     val_losses = []
     val_accs = []
 
@@ -175,7 +175,7 @@ def main():
         # Training
         train_loss, train_acc = train_epoch(model, device, train_loader, optimizer, N, criterion, epoch)
         scheduler.step()
-        
+
         train_losses.append(train_loss)
         train_accs.append(train_acc)
 
@@ -189,7 +189,7 @@ def main():
             print("Finish Epoch {}".format(epoch))
             print("Train loss: {}, train accuracy: {}".format(train_loss, train_acc))
             print("Val loss: {}, val accuracy: {}".format(val_loss, val_acc))
-        
+
         # Save training state
         last_state = {
             'epoch': epoch,
@@ -205,16 +205,16 @@ def main():
             'val_loader': val_loader
         }
 
-        if val_loss < min_val_loss: # Best training state 
+        if val_loss < min_val_loss: # Best training state
             min_val_loss = val_loss
             best_state = last_state
 
-        # Stopping criteria: 
+        # Stopping criteria:
         if early_stopping(val_loss): #train_loss < 1e-10 and early_stopping(val_loss):
             print("Done training in {} epochs".format(epoch))
             break
-    
-    
+
+
     # Save training results
     save_dir = args.save_dir
     save_subdir = f"width_{D}_depth_{L}_nonlinear_depth_{nonlinear_L}_{init_}_init_{data_type}_data_{activation_str}_activation_seed_{seed}"

@@ -20,6 +20,7 @@ do
 		--hidden_dim $width \
 		--depth 2 \
 		--nonlinear_depth 1 \
+		--init $init \
 		--save_dir ../save/hybrid/inits
 	done
 done

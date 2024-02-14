@@ -38,7 +38,7 @@ def uos_dataset(N_k, K, d, r, orthogonal=False, batch_size=128, seed=0):
         bases = [ U[:, i*r:(i+1)*r] for i in range(K) ]
     else:
         bases = [svds(np.random.rand(d, d), r)[0] for _ in range(K)]
-    
+
     # Create samples and labels
     samples = np.array( [bases[i] @ (2*np.sqrt(3)*np.random.rand(r, N_k)- np.sqrt(3)) for i in range(K)] ) # Randomly generate samples in each subspace
     samples = np.transpose(samples, axes=(0, 2, 1)) # N_k x K x d
@@ -46,6 +46,11 @@ def uos_dataset(N_k, K, d, r, orthogonal=False, batch_size=128, seed=0):
 
     labels = np.arange(K)
     labels = np.repeat(labels, N_k, axis=0)
+
+    # Randomly shuffle samples and labels
+    perm = np.random.permutation(N)
+    samples = samples[perm, :]
+    labels = labels[perm]
 
     # Create data loader
     uos_dataset = UoSDataset(samples, labels)
@@ -93,6 +98,11 @@ def mog_dataset(N_k, K, d, batch_size=128, seed=0):
 
     labels = np.arange(K)
     labels = np.repeat(labels, N_k, axis=0)
+
+    # Randomly shuffle samples and labels
+    perm = np.random.permutation(N)
+    samples = samples[perm, :]
+    labels = labels[perm]
 
     # Create data loader
     mog_dataset = MoGDataset(samples, labels)

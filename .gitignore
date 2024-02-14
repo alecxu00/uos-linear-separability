@@ -3,3 +3,5 @@ __pycache__/
 save/
 logs/
 debug/
+.ipynb_checkpoints/
+layer_features.ipynb

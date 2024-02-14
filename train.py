@@ -90,7 +90,7 @@ def parse_train_args():
     
     # Training settings
     parser.add_argument('--epochs', type=int, default=1000, help='Max training epochs')
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
+    parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
     parser.add_argument('--lr', type=float, default=1e-2, help='Initial learning rate')
     parser.add_argument('--patience', type=int, default=100, help='Early stopping patience')
 
@@ -105,6 +105,7 @@ def parse_train_args():
 # Main function
 def main():
     args = parse_train_args()
+    print(args)
 
     # Set up device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -143,9 +144,9 @@ def main():
     model = HybridNet(in_dim=d, hidden_dim=D, num_classes=K,
                      num_layers=L, num_nonlinear_layers=nonlinear_L,
                      activation=activation, init_method=init_, var=var)
-    model.layers[0].requires_grad_(False)
-    #for param in model.layers[0].parameters(): # Freeze first weight matrix
-    #    param.requires_grad = False
+    #model.layers[0].requires_grad_(False)
+    for param in model.layers[0].parameters(): # Freeze first weight matrix
+        param.requires_grad = False
     model = model.to(device)
 
     # Set up loss and optimizer
@@ -209,7 +210,7 @@ def main():
             best_state = last_state
 
         # Stopping criteria: 
-        if train_loss < 1e-10 and early_stopping(val_loss):
+        if early_stopping(val_loss): #train_loss < 1e-10 and early_stopping(val_loss):
             print("Done training in {} epochs".format(epoch))
             break
     
@@ -225,7 +226,7 @@ def main():
     save_path = os.path.join(checkpoint_dir, 'best.pth')
     torch.save(best_state, save_path)
 
-    print("Saving last model")
+    print("Saving last model\n")
     save_path = os.path.join(checkpoint_dir, 'last.pth')
     torch.save(last_state, save_path)
 

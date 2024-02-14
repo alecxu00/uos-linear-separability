@@ -60,11 +60,7 @@ def parse_test_args():
     parser.add_argument('--data_dim', type=int, default=16)
     parser.add_argument('--rank', type=int, default=4, help='Rank of subspaces. Only used when --data_type==uos')
 
-    # Learning
-    parser.add_argument('--epochs', type=int, default=1000, help='Max training epochs')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
-    parser.add_argument('--lr', type=float, default=1e-2, help='Initial learning rate')
-    parser.add_argument('--patience', type=int, default=100, help='Early stopping patience')
 
     # Save directory
     parser.add_argument('--save_dir', type=str, default='./save/hybrid')
@@ -77,6 +73,7 @@ def parse_test_args():
 # Main function
 def main():
     args = parse_test_args()
+    print(args)
 
     # Set up device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -146,7 +143,7 @@ def main():
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
 
-    print("Saving test results")
+    print("Saving test results\n")
     save_path = os.path.join(checkpoint_dir, 'test.pth')
     torch.save(test_state, save_path)
 

@@ -136,6 +136,7 @@ def parse_probe_args():
 # Main function
 def main():
     args = parse_probe_args()
+    print(args)
 
     # Set up device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -257,6 +258,7 @@ def main():
         interm_features[i] = torch.cat(interm_features[i], 0).detach().cpu()
     state = { 'interm_features': interm_features }
     save_path = os.path.join(checkpoint_dir, "intermediate_features.pth")
+    print("Saving intermediate feature layers\n")
     torch.save(state, save_path)
     
 

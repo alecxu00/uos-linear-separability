@@ -19,7 +19,7 @@ class UoSDataset(Dataset):
 
         return sample, label
 
-def uos_dataset(N_k, K, d, r, orthogonal=False, batch_size=32, seed=0):
+def uos_dataset(N_k, K, d, r, orthogonal=False, batch_size=128, seed=0):
     '''
     N_k: number of samples per class
     K: number of classes
@@ -70,7 +70,7 @@ class MoGDataset(Dataset):
 
         return sample, label
 
-def mog_dataset(N_k, K, d, batch_size=32, seed=0):
+def mog_dataset(N_k, K, d, batch_size=128, seed=0):
     '''
     N_k: number of samples per class
     K: number of classes

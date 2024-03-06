@@ -60,7 +60,7 @@ class HybridNet(nn.Module):
 
         # uniform: Uniform initialization with indicated variance
         elif self.init_method == 'uniform':
-            bound_ = np.sqrt(3) * self.var
+            bound_ = np.sqrt(3 * self.var)
             for layer in self.layers:
                 if isinstance(layer, nn.Linear):
                     nn.init.uniform_(layer.weight, a=-bound_, b=bound_)

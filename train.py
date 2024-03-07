@@ -87,6 +87,7 @@ def parse_train_args():
     parser.add_argument('--samples_per_class', type=int, default=100)
     parser.add_argument('--data_dim', type=int, default=16)
     parser.add_argument('--rank', type=int, default=4, help='Rank of subspaces. Only used when --data_type==uos')
+    parser.add_argument('--angle', type=float, default=0, help='Principal angle (in degrees) between pairs of subspaces. Only used when --data_type==uos and K must be even.')
     
     # Training settings
     parser.add_argument('--epochs', type=int, default=1000, help='Max training epochs')
@@ -126,8 +127,9 @@ def main():
 
     if data_type == 'uos':
         r = args.rank
-        train_set, train_loader = uos_dataset(N_k, K, d, r, batch_size=batch_size)
-        val_set, val_loader = uos_dataset(N_k, K, d, r, batch_size=batch_size)
+        angle = args.angle
+        train_set, train_loader = uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle)
+        val_set, val_loader = uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle)
     elif data_type == 'mog':
         train_set, train_loader = mog_dataset(N_k, K, d, batch_size=batch_size)
         val_set, val_loader = mog_dataset(N_k, K, d, batch_size=batch_size)
@@ -217,7 +219,11 @@ def main():
 
     # Save training results
     save_dir = args.save_dir
-    save_subdir = f"width_{D}_depth_{L}_nonlinear_depth_{nonlinear_L}_{init_}_init_{data_type}_data_{activation_str}_activation_seed_{seed}"
+    if data_type == 'uos':
+        angle_save = int(angle)
+        save_subdir = f"width_{D}_depth_{L}_nonlinear_depth_{nonlinear_L}_{init_}_init_{data_type}_data_{K}_classes_rank_{r}_angle_{angle_save}_{activation_str}_activation_seed_{seed}"
+    elif data_type == 'mog':
+        save_subdir = f"width_{D}_depth_{L}_nonlinear_depth_{nonlinear_L}_{init_}_init_{data_type}_data_{K}_classes_{activation_str}_activation_seed_{seed}"
     checkpoint_dir = os.path.join(save_dir, save_subdir)
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)

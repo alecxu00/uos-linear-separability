@@ -1,6 +1,7 @@
 __pycache__/
 .vscode/
 save/
+tmp/
 logs/
 debug/
 .ipynb_checkpoints/

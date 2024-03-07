@@ -125,9 +125,6 @@ def parse_probe_args():
     parser.add_argument('--lr', type=float, default=1e-2, help='Initial learning rate')
     parser.add_argument('--patience', type=int, default=100, help='Early stopping patience')
 
-    # Save directory
-    parser.add_argument('--save_dir', type=str, default='./save/linear_probe')
-
     args = parser.parse_args()
 
     return args
@@ -179,13 +176,6 @@ def main():
     print("Loading saved model.")
     model.load_state_dict(ckpt['state_dict']) # Model weights
     model = model.to(device)
-
-    # Set up save directory
-    save_dir = args.save_dir
-    save_subdir = f"linear_probe_width_{D}_depth_{L}_nonlinear_depth_{nonlinear_L}_{init_}_init_{data_type}_data_{activation_str}_activation_seed_{seed}"
-    checkpoint_dir = os.path.join(save_dir, save_subdir)
-    if not os.path.exists(checkpoint_dir):
-        os.makedirs(checkpoint_dir)
 
     # Linear probe intermediate layer features
     epochs = args.epochs
@@ -243,12 +233,12 @@ def main():
         # Save training results
         print("Saving best linear model")
         save_fname = 'layer_' + str(idx) + '_best.pth'
-        save_path = os.path.join(checkpoint_dir, save_fname)
+        save_path = os.path.join(model_path, save_fname)
         torch.save(best_state, save_path)
 
         print("Saving last linear model")
         save_fname = 'layer_' + str(idx) + '_last.pth'
-        save_path = os.path.join(checkpoint_dir, save_fname)
+        save_path = os.path.join(model_path, save_fname)
         torch.save(last_state, save_path)
 
     

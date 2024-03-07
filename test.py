@@ -59,11 +59,8 @@ def parse_test_args():
     parser.add_argument('--samples_per_class', type=int, default=100)
     parser.add_argument('--data_dim', type=int, default=16)
     parser.add_argument('--rank', type=int, default=4, help='Rank of subspaces. Only used when --data_type==uos')
-
+    parser.add_argument('--angle', type=float, default=0, help='Principal angle (in degrees) between pairs of subspaces. Only used when --data_type==uos and K must be even.')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
-
-    # Save directory
-    parser.add_argument('--save_dir', type=str, default='./save/hybrid')
 
     args = parser.parse_args()
 
@@ -94,7 +91,8 @@ def main():
 
     if data_type == 'uos':
         r = args.rank
-        test_set, test_loader = uos_dataset(N_k, K, d, r, batch_size=batch_size)
+        angle = args.angle
+        test_set, test_loader = uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle)
     elif data_type == 'mog':
         test_set, test_loader = mog_dataset(N_k, K, d, batch_size=batch_size)
     
@@ -120,7 +118,7 @@ def main():
         ckpt = torch.load(load_path)
         print("Loading saved model.")
         model.load_state_dict(ckpt['state_dict'])
-    else: 
+    else:
         print("Using untrained model.")
 
     model = model.to(device)
@@ -136,15 +134,8 @@ def main():
         'test_labels': test_set.labels
     }
 
-    # Save test results
-    save_dir = args.save_dir
-    save_subdir = f"width_{D}_depth_{L}_nonlinear_depth_{nonlinear_L}_{init_}_init_{data_type}_data_{activation_str}_activation_seed_{seed}"
-    checkpoint_dir = os.path.join(save_dir, save_subdir)
-    if not os.path.exists(checkpoint_dir):
-        os.makedirs(checkpoint_dir)
-
     print("Saving test results\n")
-    save_path = os.path.join(checkpoint_dir, 'test.pth')
+    save_path = os.path.join(model_path, 'test.pth') # Save in same directory as saved model
     torch.save(test_state, save_path)
 
 

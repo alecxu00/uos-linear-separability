@@ -1,11 +1,13 @@
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-
+from torchvision.datasets import USPS
+from PIL import Image
 from scipy.stats import ortho_group
+import os
 
-# Dataset of samples that lie on union of subspaces
-class UoSDataset(Dataset):
+# Dataset of synthetic samples
+class SyntheticDataset(Dataset):
     def __init__(self, samples, labels, transform=None):
         self.samples = samples
         self.labels = labels
@@ -19,7 +21,7 @@ class UoSDataset(Dataset):
 
         return sample, label
 
-def uos_dataset(N_k, K, d, r, orthogonal=False, batch_size=128, seed=0, angle=0):
+def get_uos_dataset(N_k, K, d, r, orthogonal=False, batch_size=128, seed=0, angle=0):
     '''
     N_k: number of samples per class
     K: number of classes
@@ -45,7 +47,7 @@ def uos_dataset(N_k, K, d, r, orthogonal=False, batch_size=128, seed=0, angle=0)
 
     else: # Generate subspaces such that each pair of bases has a minimum (and maximum) principal angle of angle
         assert K % 2 == 0 # Even number of subspaces
-        assert d > (K * r) # Assert data dimension is large enough
+        assert d >= (K * r) # Assert data dimension is large enough
         angle_rad = np.deg2rad(angle) # Convert degrees to radians
 
         U_full = ortho_group.rvs(d)
@@ -78,29 +80,13 @@ def uos_dataset(N_k, K, d, r, orthogonal=False, batch_size=128, seed=0, angle=0)
     labels = labels[perm]
 
     # Create data loader
-    uos_dataset = UoSDataset(samples, labels)
+    uos_dataset = SyntheticDataset(samples, labels)
     uos_loader = DataLoader(uos_dataset, batch_size=batch_size, shuffle=True)
 
     return uos_dataset, uos_loader
 
 
-
-# Dataset of samples that come from mixture of (high-rank) Gaussians
-class MoGDataset(Dataset):
-    def __init__(self, samples, labels, transform=None):
-        self.samples = samples
-        self.labels = labels
-    
-    def __len__(self):
-        return self.labels.size
-    
-    def __getitem__(self, idx):
-        sample = self.samples[idx, :]
-        label = self.labels[idx]
-
-        return sample, label
-
-def mog_dataset(N_k, K, d, batch_size=128, seed=0):
+def get_mog_dataset(N_k, K, d, batch_size=128, seed=0):
     '''
     N_k: number of samples per class
     K: number of classes
@@ -130,7 +116,105 @@ def mog_dataset(N_k, K, d, batch_size=128, seed=0):
     labels = labels[perm]
 
     # Create data loader
-    mog_dataset = MoGDataset(samples, labels)
+    mog_dataset = SyntheticDataset(samples, labels)
     mog_loader = DataLoader(mog_dataset, batch_size=batch_size, shuffle=True)
 
     return mog_dataset, mog_loader
+
+
+# Partial dataset for USPS digits
+class USPSPartialDataset(USPS):
+    def __init__(self, root, N_k, K, train=True, transform=None, download=True):
+        super().__init__(root=root, train=train, transform=transform, download=download)
+
+        assert K > 0 and K < 11, "Invalid number of USPS classes."
+        self.num_classes = K # Number of classes
+        self.num_samples = N_k * K # Number of samples
+
+        self.targets = np.array(self.targets)
+        all_samples = []
+        all_labels = []
+        for k in range(K):
+            samples_in_class = self.data[self.targets == k, :][:N_k]
+            all_samples.append(samples_in_class)
+            all_labels.append( np.ones(len(samples_in_class)) * k )
+
+        self.samples = np.concatenate(all_samples, 0)
+        self.labels = np.concatenate(all_labels, 0)
+
+    def __getitem__(self, idx):
+        img = self.samples[idx]
+        img = Image.fromarray(img)
+        #img = img.resize((img.size[0] // 2, img.size[1] // 2))
+        img = np.array(img, dtype=np.float32)
+
+        label = self.labels[idx]
+        return img.flatten(), label
+
+    def __len__(self):
+        return len(self.samples)
+
+
+def get_usps_dataset(N_k, K, batch_size=128, root='./datasets/', train=True):
+    '''
+        N_k: number of samples per class
+        K: number of classes 
+        batch_size: batch size
+        root: directory to store downloaded images
+        train: indicate train or test set
+    '''
+
+    usps_dataset = USPSPartialDataset(root, N_k, K, train=train)
+    usps_loader = DataLoader(usps_dataset, batch_size=batch_size, shuffle=True)
+
+    return usps_dataset, usps_loader
+
+
+# Partial dataset for MCR2 features of CIFAR-10
+class CIFAR10MCR2PartialDataset(Dataset):
+    def __init__(self, N_k, K, train=True, root='./datasets/cifar-10/', features_fname='train_features.npy', labels_fname='train_labels.npy'):
+
+        assert K > 0 and K < 11, "Invalid number of CIFAR-10 classes."
+
+        features_path = os.path.join(root, features_fname)
+        labels_path = os.path.join(root, labels_fname)
+
+        features = np.load(features_path)
+        labels = np.load(labels_path)
+
+        assert N_k <= features.shape[0] // 10, "Invalid number of samples per class."
+
+        all_samples = []
+        all_labels = []
+        for k in range(K):
+            samples_in_class = features[labels == k, :][:N_k]
+
+            all_samples.append(samples_in_class)
+            all_labels.append( np.ones(samples_in_class.shape[0]) * k )
+
+        self.samples = np.concatenate(all_samples, 0).astype(np.float32)
+        self.labels = np.concatenate(all_labels, 0)
+
+    def __getitem__(self, idx):
+        sample = self.samples[idx, :]
+        label = self.labels[idx]
+
+        return sample, label
+
+    def __len__(self):
+        return len(self.labels)
+
+def get_cifar10_mcr2_dataset(N_k, K, root='./datasets/cifar10/', features_fname='train_features.npy', labels_fname='train_labels.npy', batch_size=128):
+    '''
+        - N_k: number of samples per class
+        - K: number of classes
+        - root: directory where dataset is stored
+        - features_fname: filename of features
+        - labels_fname: filename of labels
+        - batch_size: batch size
+    '''
+
+    cifar10_mcr2_dataset = CIFAR10MCR2PartialDataset(N_k, K, root=root, features_fname=features_fname, labels_fname=labels_fname)
+    cifar10_mcr2_loader = DataLoader(cifar10_mcr2_dataset, batch_size=batch_size, shuffle=True)
+
+    return cifar10_mcr2_dataset, cifar10_mcr2_loader

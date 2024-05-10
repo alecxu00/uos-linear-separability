@@ -19,6 +19,7 @@ def train_epoch(model, device, loader, optimizer, num_samples, criterion, epoch)
     num_correct = 0
     for _, (data, targets) in enumerate(loader):
         # Get model predictions
+        targets = targets.type(torch.LongTensor)
         data, targets = data.to(device), targets.to(device)
         optimizer.zero_grad()
         out, _ = model(data)
@@ -32,7 +33,7 @@ def train_epoch(model, device, loader, optimizer, num_samples, criterion, epoch)
         running_loss += loss.item() * data.size(0)
         pred = torch.argmax(out, dim=1)
         num_correct += torch.sum(pred==targets).item()
-    
+
     epoch_loss = running_loss / len(loader.sampler)
     epoch_accuracy = 100. * num_correct / num_samples
 
@@ -48,6 +49,7 @@ def eval_epoch(model, device, loader, num_samples, criterion, epoch):
     num_correct = 0
 
     for _, (data, targets) in enumerate(loader):
+        targets = targets.type(torch.LongTensor)
         data, targets = data.to(device), targets.to(device)
         out, _ = model(data)
 
@@ -82,7 +84,7 @@ def parse_train_args():
     parser.add_argument('--seed', type=int, default=0)
 
     # Data
-    parser.add_argument('--data_type', type=str, default='uos', choices=['uos', 'mog'])
+    parser.add_argument('--data_type', type=str, default='uos', choices=['uos', 'mog', 'usps', 'cifar10'])
     parser.add_argument('--num_classes', type=int, default=5)
     parser.add_argument('--samples_per_class', type=int, default=100)
     parser.add_argument('--data_dim', type=int, default=16)
@@ -122,17 +124,24 @@ def main():
     N_k = args.samples_per_class
     K = args.num_classes
     N = N_k * K
+    print("Number samples = ", N)
     d = args.data_dim
     batch_size = args.batch_size
 
     if data_type == 'uos':
         r = args.rank
         angle = args.angle
-        train_set, train_loader = uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle)
-        val_set, val_loader = uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle)
+        train_set, train_loader = get_uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle)
+        val_set, val_loader = get_uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle)
     elif data_type == 'mog':
-        train_set, train_loader = mog_dataset(N_k, K, d, batch_size=batch_size)
-        val_set, val_loader = mog_dataset(N_k, K, d, batch_size=batch_size)
+        train_set, train_loader = get_mog_dataset(N_k, K, d, batch_size=batch_size)
+        val_set, val_loader = get_mog_dataset(N_k, K, d, batch_size=batch_size)
+    elif data_type == 'usps':
+        train_set, train_loader = get_usps_dataset(N_k, K, batch_size=batch_size, train=True)
+        val_set, val_loader = get_usps_dataset(N_k, K, batch_size=batch_size, train=False)
+    elif data_type == 'cifar10':
+        train_set, train_loader = get_cifar10_mcr2_dataset(N_k, K, root='./datasets/cifar10/', features_fname='train_features.npy', labels_fname='train_labels.npy', batch_size=batch_size)
+        val_set, val_loader = get_cifar10_mcr2_dataset(N_k, K, root='./datasets/cifar10/', features_fname='val_features.npy', labels_fname='val_labels.npy', batch_size=batch_size)
 
     # Initialize model
     D = args.hidden_dim
@@ -221,9 +230,9 @@ def main():
     save_dir = args.save_dir
     if data_type == 'uos':
         angle_save = int(angle)
-        save_subdir = f"width_{D}_depth_{L}_nonlinear_depth_{nonlinear_L}_{init_}_init_{data_type}_data_{K}_classes_rank_{r}_angle_{angle_save}_{activation_str}_activation_seed_{seed}"
-    elif data_type == 'mog':
-        save_subdir = f"width_{D}_depth_{L}_nonlinear_depth_{nonlinear_L}_{init_}_init_{data_type}_data_{K}_classes_{activation_str}_activation_seed_{seed}"
+        save_subdir = f"width_{D}_depth_{L}_nonlinear_depth_{nonlinear_L}_{init_}_init_{data_type}_data_dim_{d}_{K}_classes_rank_{r}_angle_{angle_save}_{activation_str}_activation_seed_{seed}"
+    else:
+        save_subdir = f"width_{D}_depth_{L}_nonlinear_depth_{nonlinear_L}_{init_}_init_{data_type}_data_dim_{d}_{K}_classes_{activation_str}_activation_seed_{seed}"
     checkpoint_dir = os.path.join(save_dir, save_subdir)
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)

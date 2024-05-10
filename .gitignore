@@ -6,3 +6,5 @@ logs/
 debug/
 .ipynb_checkpoints/
 layer_features.ipynb
+datasets/
+figures/

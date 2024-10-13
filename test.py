@@ -39,6 +39,8 @@ def test(model, device, loader, num_samples, criterion):
 def parse_test_args():
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('--num_trials', type=int, default=10)
+
     # Model selection
     parser.add_argument('--model_path', type=str, default=None, help='Path to saved model weights')
     parser.add_argument('--hidden_dim', type=int, default=32)
@@ -55,7 +57,7 @@ def parse_test_args():
     parser.add_argument('--seed', type=int, default=0)
 
     # Data
-    parser.add_argument('--data_type', type=str, default='uos', choices=['uos', 'mog', 'usps', 'cifar10'])
+    parser.add_argument('--data_type', type=str, default='uos', choices=['uos', 'cifar10', 'cifar10_mcr2'])
     parser.add_argument('--num_classes', type=int, default=5)
     parser.add_argument('--samples_per_class', type=int, default=100)
     parser.add_argument('--data_dim', type=int, default=16)
@@ -94,12 +96,8 @@ def main():
         r = args.rank
         angle = args.angle
         test_set, test_loader = get_uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle)
-    elif data_type == 'mog':
-        test_set, test_loader = get_mog_dataset(N_k, K, d, batch_size=batch_size)
-    elif data_type == 'usps':
-        test_set, test_loader = get_usps_dataset(N_k, K, batch_size=batch_size, train=False)
-    elif data_type == 'cifar10':
-        test_set, test_loader = get_cifar10_mcr2_dataset(N_k, K, root='./datasets/cifar10/', features_fname='test_features.npy', labels_fname='test_labels.npy', batch_size=batch_size)
+    elif data_type == 'cifar10_mcr2':
+        test_set, test_loader = get_cifar10_mcr2_dataset(N_k, K, root='./datasets/cifar10_mcr2/', features_fname='test_features.npy', labels_fname='test_labels.npy', batch_size=batch_size)
 
     # Initialize model
     D = args.hidden_dim
@@ -115,33 +113,39 @@ def main():
                      activation=activation, init_method=init_, var=var)
 
 
-    # Load best saved state from training
-    model_path = args.model_path
-    if model_path is not None:
-        load_path = os.path.join(model_path, 'best.pth')
-        ckpt = torch.load(load_path)
-        print("Loading saved model.")
-        model.load_state_dict(ckpt['state_dict'])
-    else:
-        print("Using untrained model.")
+    num_trials = args.num_trials
+    trial_test_accs = []
+    for i in range(num_trials):
+        # Load best saved state from training
+        model_path = args.model_path
+        if model_path is not None:
+            load_path = os.path.join(model_path, 'trial_' + str(i), 'best.pth')
+            ckpt = torch.load(load_path)
+            print("Loading saved model.")
+            model.load_state_dict(ckpt['state_dict'])
+        else:
+            print("Using untrained model.")
 
-    model = model.to(device)
+        model = model.to(device)
 
-    # Test model
-    criterion = nn.CrossEntropyLoss()
-    test_loss, test_acc = test(model, device, test_loader, N, criterion)
-    test_state = {
-        'state_dict': model.state_dict(),
-        'test_loss': test_loss,
-        'test_accuracy': test_acc,
-        'test_set': test_set.samples,
-        'test_labels': test_set.labels
-    }
+        # Test model
+        criterion = nn.CrossEntropyLoss()
+        test_loss, test_acc = test(model, device, test_loader, N, criterion)
+        trial_test_accs.append(test_acc)
+        test_state = {
+            'state_dict': model.state_dict(),
+            'test_loss': test_loss,
+            'test_accuracy': test_acc,
+            'test_set': test_set.samples,
+            'test_labels': test_set.labels
+        }
 
-    print("Saving test results\n")
-    save_path = os.path.join(model_path, 'test.pth') # Save in same directory as saved model
-    torch.save(test_state, save_path)
+        print("Saving test results\n")
+        save_path = os.path.join(model_path, 'trial_' + str(i), 'test.pth') # Save in same directory as saved model
+        torch.save(test_state, save_path)
 
+
+    print("Test accuracy mean and stdev = ", np.mean(trial_test_accs), np.std(trial_test_accs))
 
 if __name__ == "__main__":
     main()

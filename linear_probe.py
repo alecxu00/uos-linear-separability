@@ -114,7 +114,7 @@ def parse_probe_args():
     parser.add_argument('--seed', type=int, default=0)
 
     # Data
-    parser.add_argument('--data_type', type=str, default='uos', choices=['uos', 'mog'])
+    parser.add_argument('--data_type', type=str, default='uos', choices=['uos', 'cifar10'])
     parser.add_argument('--num_classes', type=int, default=5)
     parser.add_argument('--samples_per_class', type=int, default=100)
     parser.add_argument('--data_dim', type=int, default=16)
@@ -247,7 +247,7 @@ def main():
     for i in range(L-1):
         interm_features[i] = torch.cat(interm_features[i], 0).detach().cpu()
     state = { 'interm_features': interm_features }
-    save_path = os.path.join(checkpoint_dir, "intermediate_features.pth")
+    save_path = os.path.join(model_path, "intermediate_features.pth")
     print("Saving intermediate feature layers\n")
     torch.save(state, save_path)
     

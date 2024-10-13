@@ -69,6 +69,8 @@ def eval_epoch(model, device, loader, num_samples, criterion, epoch):
 def parse_train_args():
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('--num_trials', type=int, default=10)
+
     # Model selection
     parser.add_argument('--hidden_dim', type=int, default=32)
     parser.add_argument('--depth', type=int, default=2)
@@ -84,7 +86,7 @@ def parse_train_args():
     parser.add_argument('--seed', type=int, default=0)
 
     # Data
-    parser.add_argument('--data_type', type=str, default='uos', choices=['uos', 'mog', 'usps', 'cifar10'])
+    parser.add_argument('--data_type', type=str, default='uos', choices=['uos', 'cifar10', 'cifar10_mcr2'])
     parser.add_argument('--num_classes', type=int, default=5)
     parser.add_argument('--samples_per_class', type=int, default=100)
     parser.add_argument('--data_dim', type=int, default=16)
@@ -119,31 +121,17 @@ def main():
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    # Create dataset
+    # Dataset settings
     data_type = args.data_type
     N_k = args.samples_per_class
     K = args.num_classes
     N = N_k * K
-    print("Number samples = ", N)
+    print("Number of samples per trial = ", N, "\n")
     d = args.data_dim
     batch_size = args.batch_size
 
-    if data_type == 'uos':
-        r = args.rank
-        angle = args.angle
-        train_set, train_loader = get_uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle)
-        val_set, val_loader = get_uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle)
-    elif data_type == 'mog':
-        train_set, train_loader = get_mog_dataset(N_k, K, d, batch_size=batch_size)
-        val_set, val_loader = get_mog_dataset(N_k, K, d, batch_size=batch_size)
-    elif data_type == 'usps':
-        train_set, train_loader = get_usps_dataset(N_k, K, batch_size=batch_size, train=True)
-        val_set, val_loader = get_usps_dataset(N_k, K, batch_size=batch_size, train=False)
-    elif data_type == 'cifar10':
-        train_set, train_loader = get_cifar10_mcr2_dataset(N_k, K, root='./datasets/cifar10/', features_fname='train_features.npy', labels_fname='train_labels.npy', batch_size=batch_size)
-        val_set, val_loader = get_cifar10_mcr2_dataset(N_k, K, root='./datasets/cifar10/', features_fname='val_features.npy', labels_fname='val_labels.npy', batch_size=batch_size)
 
-    # Initialize model
+    # Model settings
     D = args.hidden_dim
     L = args.depth
     nonlinear_L = args.nonlinear_depth
@@ -152,99 +140,130 @@ def main():
     init_ = args.init
     var = args.init_var
 
-    model = HybridNet(in_dim=d, hidden_dim=D, num_classes=K,
-                     num_layers=L, num_nonlinear_layers=nonlinear_L,
-                     activation=activation, init_method=init_, var=var)
-    #model.layers[0].requires_grad_(False)
-    for param in model.layers[0].parameters(): # Freeze first weight matrix
-        param.requires_grad = False
-    model = model.to(device)
+    # Train num_trials different models
+    trial_train_accs = []
+    trial_val_accs = []
+    num_trials = args.num_trials
+    for i in range(num_trials):
+        print("TRIAL " + str(i))
+        if data_type == 'uos':
+            r = args.rank
+            angle = args.angle
+            train_set, train_loader = get_uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle)
+            val_set, val_loader = get_uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle)
+        elif data_type == 'cifar10_mcr2':
+            train_set, train_loader = get_cifar10_mcr2_dataset(N_k, K, root='./datasets/cifar10_mcr2/', features_fname='train_features.npy', labels_fname='train_labels.npy', batch_size=batch_size)
+            val_set, val_loader = get_cifar10_mcr2_dataset(N_k, K, root='./datasets/cifar10_mcr2/', features_fname='val_features.npy', labels_fname='val_labels.npy', batch_size=batch_size)
+        elif data_type == 'cifar10':
+            train_set, train_loader = get_cifar10_dataset(N_k, K, '/scratch/qingqu_root/qingqu1/alecx/cifar10/', batch_size, train=True)
+            val_set, val_loader = get_cifar10_dataset(N_k, K, '/scratch/qingqu_root/qingqu1/alecx/cifar10/', batch_size, train=False)
 
-    # Set up loss and optimizer
-    epochs = args.epochs
-    lr = args.lr
+        # Initialize model
+        model = HybridNet(in_dim=d, hidden_dim=D, num_classes=K,
+                         num_layers=L, num_nonlinear_layers=nonlinear_L,
+                         activation=activation, init_method=init_, var=var)
 
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.SGD(model.parameters(),
-                          lr=lr,
-                          momentum=0.9,
-                          weight_decay=0.0)
-    #scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, eta_min=lr/1000)
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[epochs//3, 2*epochs//3], gamma=0.1)
-    # Training
-    patience = args.patience
-    early_stopping = EarlyStopping(patience=patience)
+        for param in model.layers[0].parameters(): # Freeze first weight matrix
+            param.requires_grad = False
+        model = model.to(device)
 
-    train_losses = []
-    train_accs = []
+        # Set up loss and optimizer
+        epochs = args.epochs
+        lr = args.lr
 
-    val_losses = []
-    val_accs = []
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.SGD(model.parameters(),
+                              lr=lr,
+                              momentum=0.9,
+                              weight_decay=0.0)
 
-    min_val_loss = float('Inf')
-    for epoch in range(1, epochs+1):
+        scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[epochs//3, 2*epochs//3], gamma=0.1)
+
         # Training
-        train_loss, train_acc = train_epoch(model, device, train_loader, optimizer, N, criterion, epoch)
-        scheduler.step()
+        patience = args.patience
+        early_stopping = EarlyStopping(patience=patience)
 
-        train_losses.append(train_loss)
-        train_accs.append(train_acc)
+        train_losses = []
+        train_accs = []
+        best_train_acc = 0.0
 
-        # Cross-validation
-        val_loss, val_acc = eval_epoch(model, device, val_loader, N, criterion, epoch)
-        val_losses.append(val_loss)
-        val_accs.append(val_acc)
+        val_losses = []
+        val_accs = []
+        best_val_acc = 0.0
 
-        # Print training progress
-        if epoch % 100 == 0:
-            print("Finish Epoch {}".format(epoch))
-            print("Train loss: {}, train accuracy: {}".format(train_loss, train_acc))
-            print("Val loss: {}, val accuracy: {}".format(val_loss, val_acc))
+        min_val_loss = float('Inf')
+        for epoch in range(1, epochs+1):
+            # Training
+            train_loss, train_acc = train_epoch(model, device, train_loader, optimizer, N, criterion, epoch)
+            scheduler.step()
 
-        # Save training state
-        last_state = {
-            'epoch': epoch,
-            'state_dict': model.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'train_losses': train_losses,
-            'train_accuracies': train_accs,
-            'val_losses': val_losses,
-            'val_accuracies': val_accs,
-            'train_set': train_set,
-            'train_loader': train_loader,
-            'val_set': val_set,
-            'val_loader': val_loader
-        }
+            train_losses.append(train_loss)
+            train_accs.append(train_acc)
+            if train_acc > best_train_acc:
+                best_train_acc = train_acc
 
-        if val_loss < min_val_loss: # Best training state
-            min_val_loss = val_loss
-            best_state = last_state
+            # Cross-validation
+            val_loss, val_acc = eval_epoch(model, device, val_loader, N, criterion, epoch)
+            val_losses.append(val_loss)
+            val_accs.append(val_acc)
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
 
-        # Stopping criteria:
-        if early_stopping(val_loss): #train_loss < 1e-10 and early_stopping(val_loss):
-            print("Done training in {} epochs".format(epoch))
-            break
+            # Print training progress
+            if epoch % 100 == 0:
+                print("Finish Epoch {}".format(epoch))
+                print("Train loss: {}, train accuracy: {}".format(train_loss, train_acc))
+                print("Val loss: {}, val accuracy: {}".format(val_loss, val_acc))
 
+            # Save training state
+            last_state = {
+                'epoch': epoch,
+                'state_dict': model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'train_losses': train_losses,
+                'train_accuracies': train_accs,
+                'val_losses': val_losses,
+                'val_accuracies': val_accs,
+                'train_set': train_set,
+                'train_loader': train_loader,
+                'val_set': val_set,
+                'val_loader': val_loader
+             }
 
-    # Save training results
-    save_dir = args.save_dir
-    if data_type == 'uos':
-        angle_save = int(angle)
-        save_subdir = f"width_{D}_depth_{L}_nonlinear_depth_{nonlinear_L}_{init_}_init_{data_type}_data_dim_{d}_{K}_classes_rank_{r}_angle_{angle_save}_{activation_str}_activation_seed_{seed}"
-    else:
-        save_subdir = f"width_{D}_depth_{L}_nonlinear_depth_{nonlinear_L}_{init_}_init_{data_type}_data_dim_{d}_{K}_classes_{activation_str}_activation_seed_{seed}"
-    checkpoint_dir = os.path.join(save_dir, save_subdir)
-    if not os.path.exists(checkpoint_dir):
-        os.makedirs(checkpoint_dir)
+            if val_loss < min_val_loss: # Best training state
+                min_val_loss = val_loss
+                best_state = last_state
 
-    print("Saving best model")
-    save_path = os.path.join(checkpoint_dir, 'best.pth')
-    torch.save(best_state, save_path)
+            # Stopping criteria:
+            if early_stopping(val_loss): #train_loss < 1e-10 and early_stopping(val_loss):
+                print("Done training in {} epochs".format(epoch))
+                break
 
-    print("Saving last model\n")
-    save_path = os.path.join(checkpoint_dir, 'last.pth')
-    torch.save(last_state, save_path)
+        trial_train_accs.append(best_train_acc)
+        trial_val_accs.append(best_val_acc)
 
+        # Save training results
+        save_dir = args.save_dir
+        if data_type == 'uos':
+            angle_save = int(angle)
+            save_subdir = f"width_{D}_depth_{L}_nonlinear_depth_{nonlinear_L}_{K}_classes_rank_{r}_angle_{angle_save}_{activation_str}_activation_seed_{seed}"
+        else:
+            save_subdir = f"width_{D}_depth_{L}_nonlinear_depth_{nonlinear_L}_{K}_classes_{activation_str}_activation_seed_{seed}"
+
+        checkpoint_dir = os.path.join(save_dir, save_subdir, 'trial_' + str(i))
+        if not os.path.exists(checkpoint_dir):
+            os.makedirs(checkpoint_dir)
+
+        print("Saving best model")
+        save_path = os.path.join(checkpoint_dir, 'best.pth')
+        torch.save(best_state, save_path)
+
+        print("Saving last model\n")
+        save_path = os.path.join(checkpoint_dir, 'last.pth')
+        torch.save(last_state, save_path)
+
+    print("Best train accuracy mean and stdev = ", np.mean(trial_train_accs), np.std(trial_train_accs))
+    print("Best val train accuracy mean and stdev = ", np.mean(trial_val_accs), np.std(trial_val_accs))
 
 if __name__ == "__main__":
     main()

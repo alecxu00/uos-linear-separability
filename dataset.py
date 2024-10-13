@@ -1,7 +1,8 @@
 import numpy as np
 import torch
+import torchvision.transforms as transforms
 from torch.utils.data import Dataset, DataLoader
-from torchvision.datasets import USPS
+from torchvision.datasets import CIFAR10
 from PIL import Image
 from scipy.stats import ortho_group
 import os
@@ -86,93 +87,78 @@ def get_uos_dataset(N_k, K, d, r, orthogonal=False, batch_size=128, seed=0, angl
     return uos_dataset, uos_loader
 
 
-def get_mog_dataset(N_k, K, d, batch_size=128, seed=0):
-    '''
-    N_k: number of samples per class
-    K: number of classes
-    d: data dimension
-    batch_size: batch size
-    '''
+# Partial dataset for CIFAR-10
+class CIFAR10PartialDataset(CIFAR10):
+    def __init__(self, root, K, N_k, train=True, transform=None, download=True, **kwargs):
+        super().__init__(root=root, train=train, transform=transform, download=download, **kwargs)
 
-    N = N_k * K # total number of samples
+        if K == 0:
+            self.data = []
+            self.targets = []
+        else:
+            print(f"Using Cifar10 with only {K} classes! \n")
+            self.targets = np.array(self.targets)
+            all_data = []
+            all_label = []
+            for k in range(K):
+                idx = np.random.randint(low=0, high=np.count_nonzero(self.targets == k), size=(N_k,))
+                all_data.append(self.data[self.targets == k][idx])
+                all_label.append(np.ones(N_k) * k)
 
-    # Generate Gaussian parameters randomly
-    np.random.seed(seed)
-    means = [2. * np.random.rand(d) - 1. for _ in range(K)] # Mean vectors
-    tmp = [2. * np.random.rand(d, d) - 1. for _ in range(K)]
-    covs = [tmp[i].T @ tmp[i] for i in range(K)] # Covariance matrices
+            self.data = np.concatenate(all_data, 0)
+            self.targets = np.concatenate(all_label)
 
-    # Create samples and labels
-    samples = np.array( [np.random.multivariate_normal(means[i], covs[i], size=N_k) for i in range(K)] ) # Randomly sample from Multivariate Gaussian
-    samples = np.transpose(samples, axes=(0, 2, 1)) # N_k x K x d
-    samples = np.float32( np.reshape(samples, (N, d)) ) # N x d
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
 
-    labels = np.arange(K)
-    labels = np.repeat(labels, N_k, axis=0)
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+        img, target = self.data[index], int(self.targets[index])
 
-    # Randomly shuffle samples and labels
-    perm = np.random.permutation(N)
-    samples = samples[perm, :]
-    labels = labels[perm]
-
-    # Create data loader
-    mog_dataset = SyntheticDataset(samples, labels)
-    mog_loader = DataLoader(mog_dataset, batch_size=batch_size, shuffle=True)
-
-    return mog_dataset, mog_loader
-
-
-# Partial dataset for USPS digits
-class USPSPartialDataset(USPS):
-    def __init__(self, root, N_k, K, train=True, transform=None, download=True):
-        super().__init__(root=root, train=train, transform=transform, download=download)
-
-        assert K > 0 and K < 11, "Invalid number of USPS classes."
-        self.num_classes = K # Number of classes
-        self.num_samples = N_k * K # Number of samples
-
-        self.targets = np.array(self.targets)
-        all_samples = []
-        all_labels = []
-        for k in range(K):
-            samples_in_class = self.data[self.targets == k, :][:N_k]
-            all_samples.append(samples_in_class)
-            all_labels.append( np.ones(len(samples_in_class)) * k )
-
-        self.samples = np.concatenate(all_samples, 0)
-        self.labels = np.concatenate(all_labels, 0)
-
-    def __getitem__(self, idx):
-        img = self.samples[idx]
+        # doing this so that it is consistent with all other datasets
+        # to return a PIL Image
         img = Image.fromarray(img)
-        #img = img.resize((img.size[0] // 2, img.size[1] // 2))
-        img = np.array(img, dtype=np.float32)
 
-        label = self.labels[idx]
-        return img.flatten(), label
+        if self.transform is not None:
+            img = self.transform(img)
 
-    def __len__(self):
-        return len(self.samples)
+        return img.flatten(), target
 
 
-def get_usps_dataset(N_k, K, batch_size=128, root='./datasets/', train=True):
-    '''
-        N_k: number of samples per class
-        K: number of classes 
-        batch_size: batch size
-        root: directory to store downloaded images
-        train: indicate train or test set
-    '''
+def get_cifar10_dataset(N_k, K, data_dir, batch_size, train=True, shuffle=True):
+    """
+    args:
+    @ data_dir: where dataset are stored or to be stored
+    @ batch_size: training and testing batch size
+    @ K: how many classes to use for the dataset
+    """
 
-    usps_dataset = USPSPartialDataset(root, N_k, K, train=train)
-    usps_loader = DataLoader(usps_dataset, batch_size=batch_size, shuffle=True)
+    # Transform
+    transform_cifar10 = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+            ])
 
-    return usps_dataset, usps_loader
+
+    data_set = CIFAR10PartialDataset
+    transform_data = transform_cifar10
+
+    cifar10_dataset = data_set(data_dir, K, N_k,
+                        train=train, transform=transform_data)
+
+    # Dataloader
+    cifar10_loader = torch.utils.data.DataLoader(
+            cifar10_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=1)
+
+    return cifar10_dataset, cifar10_loader
 
 
 # Partial dataset for MCR2 features of CIFAR-10
 class CIFAR10MCR2PartialDataset(Dataset):
-    def __init__(self, N_k, K, train=True, root='./datasets/cifar-10/', features_fname='train_features.npy', labels_fname='train_labels.npy'):
+    def __init__(self, N_k, K, train=True, root='./datasets/cifar10_mcr2/', features_fname='train_features.npy', labels_fname='train_labels.npy'):
 
         assert K > 0 and K < 11, "Invalid number of CIFAR-10 classes."
 
@@ -187,10 +173,11 @@ class CIFAR10MCR2PartialDataset(Dataset):
         all_samples = []
         all_labels = []
         for k in range(K):
-            samples_in_class = features[labels == k, :][:N_k]
+            idx = np.random.randint(low=0, high=np.count_nonzero(labels == k), size=(N_k,))
+            samples_in_class = features[labels == k, :][idx]
 
             all_samples.append(samples_in_class)
-            all_labels.append( np.ones(samples_in_class.shape[0]) * k )
+            all_labels.append( np.ones(N_k) * k )
 
         self.samples = np.concatenate(all_samples, 0).astype(np.float32)
         self.labels = np.concatenate(all_labels, 0)

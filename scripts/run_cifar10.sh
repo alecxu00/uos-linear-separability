@@ -1,19 +1,19 @@
 #!/bin/bash
 
-#SBATCH --job-name=run_cifar10
+#SBATCH --job-name=run_cifar10_mlp
 #SBATCH --account=qingqu1
 #SBATCH --partition=gpu
 #SBATCH --gpus=1
 #SBATCH --ntasks-per-gpu=1
 #SBATCH --mem-per-gpu=32G
 #SBATCH --time=01-00:00:00
-#SBATCH --output=../logs/run_cifar10_hybrid.log
+#SBATCH --output=../logs/run_cifar10_mlp.log
 
 declare -a widths=(1024)
 declare -a activations=("relu")
 
 DEPTH=7
-NONLINEAR_DEPTH=3
+NONLINEAR_DEPTH=6
 
 INIT="gaussian"
 INIT_VAR=1e-2
@@ -31,7 +31,7 @@ BATCH_SIZE=128
 LR=1e-3
 PATIENCE=100
 
-SAVE_DIR="../save/hybrid/cifar10"
+SAVE_DIR="../save/cifar10_mlp"
 
 for WIDTH in "${widths[@]}"
 do
@@ -47,7 +47,7 @@ do
 
 		MODEL_PATH="${SAVE_DIR}/width_${WIDTH}_depth_${DEPTH}_nonlinear_depth_${NONLINEAR_DEPTH}_${NUM_CLASSES}_classes_${ACTIVATION}_activation_seed_${SEED}"
 
-		#python3 ./test.py \
+		#python3 ../test.py \
 		#--model_path $MODEL_PATH \
 		#--hidden_dim $WIDTH --depth $DEPTH --nonlinear_depth $NONLINEAR_DEPTH --activation $ACTIVATION \
 		#--init $INIT --init_var $INIT_VAR \

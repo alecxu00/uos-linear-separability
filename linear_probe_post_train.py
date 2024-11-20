@@ -167,7 +167,8 @@ def main():
 
     # Load saved data loaders and model weights
     model_path = args.model_path
-    load_path = os.path.join(model_path, 'best.pth')
+    #load_path = os.path.join(model_path, 'best.pth')
+    load_path = os.path.join(model_path, 'init.pth')
     ckpt = torch.load(load_path)
 
     train_loader = ckpt['train_loader'] # Train set loader

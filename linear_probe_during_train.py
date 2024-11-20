@@ -6,7 +6,7 @@ import numpy as np
 import os
 import argparse
 
-from model import HybridNet
+from model import HybridNet, LinearClassifier
 from dataset import *
 from utils import *
 
@@ -65,6 +65,68 @@ def eval_epoch(model, device, loader, num_samples, criterion, epoch):
     
 
 
+# Linear probe train epoch
+def train_epoch_linear(model, linear_model, layer_idx, device, loader, optimizer, num_samples, criterion):
+    model.eval()
+    linear_model.train()
+
+    running_loss = 0.0
+    num_correct = 0
+
+    for _, (data, targets) in enumerate(loader):
+        # Hybrid model intermediate features
+        data, targets = data.to(device), targets.to(device)
+        _, layer_outs = model(data)
+        interm = layer_outs[layer_idx]
+
+        # Linear probe intermediate features
+        out = linear_model(interm)
+        loss = criterion(out, targets)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        # Save loss and accuracy
+        running_loss += loss.item() * data.size(0)
+        pred = torch.argmax(out, dim=1)
+        num_correct += sum(pred==targets).item()
+
+
+    linear_train_loss = running_loss / len(loader.sampler)
+    linear_train_acc = 100. * num_correct / num_samples
+
+    return linear_train_loss, linear_train_acc
+
+
+# Linear probe val epoch
+def eval_epoch_linear(model, linear_model, layer_idx, device, loader, num_samples, criterion):
+    model.eval()
+    linear_model.eval()
+
+    running_loss = 0.0
+    num_correct = 0
+
+    for _, (data, targets) in enumerate(loader):
+        # Get model intermediate features
+        data, targets = data.to(device), targets.to(device)
+        _, layer_out = model(data)
+        interm = layer_out[layer_idx]
+
+        # Evaluate linear probe
+        out = linear_model(interm)
+        loss = criterion(out, targets)
+
+        running_loss += loss.item() * data.size(0)
+        pred = torch.argmax(out, dim=1)
+        num_correct += sum(pred==targets).item()
+
+    linear_eval_loss = running_loss / len(loader.sampler)
+    linear_eval_acc = 100. * num_correct / num_samples
+
+    return linear_eval_loss, linear_eval_acc
+
+
 # Parse command line arguments
 def parse_train_args():
     parser = argparse.ArgumentParser()
@@ -100,8 +162,15 @@ def parse_train_args():
     parser.add_argument('--lr', type=float, default=1e-2, help='Initial learning rate')
     parser.add_argument('--patience', type=int, default=100, help='Early stopping patience')
 
+
+    # Linear probing settings
+    parser.add_argument('--linear_epochs', type=int, default=1000, help='Max linear probing epochs')
+    parser.add_argument('--linear_batch_size', type=int, default=128, help='Linear probing batch size')
+    parser.add_argument('--linear_lr', type=float, default=1e-2, help='Initial linear probing learning rate')
+    parser.add_argument('--linear_patience', type=int, default=100, help='Early stopping patience during linear probing')
+
     # Save directory
-    parser.add_argument('--save_dir', type=str, default='./save/hybrid')
+    parser.add_argument('--save_dir', type=str, default='./save/linear_probe_during_train')
 
     args = parser.parse_args()
 
@@ -146,6 +215,12 @@ def main():
     epochs = args.epochs
     assert epochs >= 0
     lr = args.lr
+    patience = args.patience
+
+    linear_epochs = args.linear_epochs
+    linear_lr = args.linear_lr
+    linear_batch_size = args.linear_batch_size
+    linear_patience = args.linear_patience
 
     trial_train_accs = []
     trial_val_accs = []
@@ -180,100 +255,84 @@ def main():
         model = HybridNet(in_dim=d, hidden_dim=D, num_classes=K,
                          num_layers=L, num_nonlinear_layers=nonlinear_L,
                          activation=activation, init_method=init_, var=init_var)
-
-        for param in model.layers[0].parameters(): # Freeze first weight matrix
-            param.requires_grad = False
         model = model.to(device)
 
-        if epochs == 0:
-            print("No training indicated, saving initialized model.")
-            state = {'state_dict': model.state_dict(),
-                     'train_loader': train_loader,
-                     'val_loader': val_loader}
+        # Set up loss and optimizer
+        criterion = nn.CrossEntropyLoss()
+        optimizer = optim.SGD(model.parameters(),
+                              lr=lr,
+                              momentum=0.9,
+                              weight_decay=1e-4)
 
-            save_path = os.path.join(checkpoint_dir, 'init.pth')
-            torch.save(state, save_path)
-        else: # Epochs > 0
-            # Set up loss and optimizer
-            criterion = nn.CrossEntropyLoss()
-            optimizer = optim.SGD(model.parameters(),
-                                  lr=lr,
-                                  momentum=0.9,
-                                  weight_decay=1e-4)
+        #scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[epochs//3, 2*epochs//3], gamma=0.1)
+        scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, eta_min=lr/100)
 
-            #scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[epochs//3, 2*epochs//3], gamma=0.1)
-            scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, eta_min=lr/100)
-
+        # Training
+        min_val_loss = float('Inf')
+        for epoch in range(1, epochs+1):
             # Training
-            patience = args.patience
-            early_stopping = EarlyStopping(patience=patience)
+            train_loss, train_acc = train_epoch(model, device, train_loader, optimizer, N, criterion, epoch)
+            scheduler.step()
 
-            train_losses = []
-            train_accs = []
-            best_train_acc = 0.0
+            # Cross-validation
+            val_loss, val_acc = eval_epoch(model, device, val_loader, N, criterion, epoch)
 
-            val_losses = []
-            val_accs = []
-            best_val_acc = 0.0
+            # Linear probe first-layer features
+            linear_model = LinearClassifier(D, K)
+            linear_model = linear_model.to(device)
 
-            min_val_loss = float('Inf')
-            for epoch in range(1, epochs+1):
-                # Training
-                train_loss, train_acc = train_epoch(model, device, train_loader, optimizer, N, criterion, epoch)
+            linear_criterion = nn.CrossEntropyLoss()
+            linear_optimizer = optim.SGD(linear_model.parameters(), lr=linear_lr, momentum=0.9, weight_decay=1e-4)
+            linear_scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(linear_optimizer, T_0=linear_epochs, eta_min=linear_lr/1000)
+            linear_early_stopping = EarlyStopping(patience=linear_patience)
+
+            min_linear_val_acc = float('Inf')
+            for linear_epoch in range(1, linear_epochs+1):
+                # Linear probe training
+                linear_train_loss, linear_train_acc = train_epoch_linear(model, linear_model, 0, device, train_loader, linear_optimizer, N, linear_criterion)
                 scheduler.step()
 
-                train_losses.append(train_loss)
-                train_accs.append(train_acc)
-                if train_acc > best_train_acc:
-                    best_train_acc = train_acc
+                # Validation
+                linear_val_loss, linear_val_acc = eval_epoch_linear(model, linear_model, 0, device, val_loader, N, linear_criterion)
 
-                # Cross-validation
-                val_loss, val_acc = eval_epoch(model, device, val_loader, N, criterion, epoch)
-                val_losses.append(val_loss)
-                val_accs.append(val_acc)
-                if val_acc > best_val_acc:
-                    best_val_acc = val_acc
+                # Early stopping criteria
+                last_linear_state = {
+                    'train_accuracy': linear_train_acc,
+                    'val_accuracy': linear_val_acc
+                }
 
-                # Print training progress
-                if epoch % 100 == 0:
-                    print("Finish Epoch {}".format(epoch))
-                    print("Train loss: {}, train accuracy: {}".format(train_loss, train_acc))
-                    print("Val loss: {}, val accuracy: {}".format(val_loss, val_acc))
+                if linear_val_acc < min_linear_val_acc:
+                    min_linear_val_acc = linear_val_acc
+                    best_linear_state = last_linear_state
 
-                # Save training state
-                last_state = {
-                    'state_dict': model.state_dict(),
-                    'train_losses': train_losses,
-                    'train_accuracies': train_accs,
-                    'val_losses': val_losses,
-                    'val_accuracies': val_accs,
-                    'train_loader': train_loader,
-                    'val_loader': val_loader
-                 }
+                if linear_early_stopping(linear_val_acc):
+                   print("Done linear probing in {} epochs".format(linear_epoch))
+                   break
 
-                if val_loss < min_val_loss: # Best training state
-                    min_val_loss = val_loss
-                    best_state = last_state
+            # Save linear probe results
+            save_path = os.path.join(checkpoint_dir, 'best_epoch_' + str(epoch) + '_probe.pth')
+            torch.save(best_linear_state, save_path)
 
-                # Stopping criteria:
-                if early_stopping(val_loss): #train_loss < 1e-10 and early_stopping(val_loss):
-                    print("Done training in {} epochs".format(epoch))
-                    break
+            save_path = os.path.join(checkpoint_dir, 'last_epoch_' + str(epoch) + '_probe.pth')
+            torch.save(last_linear_state, save_path)
 
-            trial_train_accs.append(best_train_acc)
-            trial_val_accs.append(best_val_acc)
 
-            # Save training results
-            print("Saving best model")
-            save_path = os.path.join(checkpoint_dir, 'best.pth')
-            torch.save(best_state, save_path)
+            # Print training progress
+            if epoch % 25 == 0:
+                print("Finish Epoch {}".format(epoch))
+                print("Train loss: {}, train accuracy: {}".format(train_loss, train_acc))
+                print("Val loss: {}, val accuracy: {}".format(val_loss, val_acc))
 
-            print("Saving last model\n")
-            save_path = os.path.join(checkpoint_dir, 'last.pth')
-            torch.save(last_state, save_path)
+                print('Epoch ' + str(epoch) + ' best probing train accuracy: ' + best_linear_state['train_accuracy'])
+                print('Epoch ' + str(epoch) + ' best probing val accuracy: ' + best_linear_state['val_accuracy'])
 
-        print("Best train accuracy mean and stdev = ", np.mean(trial_train_accs), np.std(trial_train_accs))
-        print("Best val train accuracy mean and stdev = ", np.mean(trial_val_accs), np.std(trial_val_accs))
+            if val_loss < min_val_loss: # Best training state
+                min_val_loss = val_loss
+
+            # Stopping criteria:
+            if early_stopping(val_loss): #train_loss < 1e-10 and early_stopping(val_loss):
+                print("Done training in {} epochs".format(epoch))
+                break
 
 if __name__ == "__main__":
     main()

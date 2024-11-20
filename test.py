@@ -62,8 +62,9 @@ def parse_test_args():
     parser.add_argument('--samples_per_class', type=int, default=100)
     parser.add_argument('--data_dim', type=int, default=16)
     parser.add_argument('--rank', type=int, default=4, help='Rank of subspaces. Only used when --data_type==uos')
-    parser.add_argument('--angle', type=float, default=0, help='Principal angle (in degrees) between pairs of subspaces. Only used when --data_type==uos and K must be even.')
+    parser.add_argument('--angle', type=float, default=None, help='Principal angle (in degrees) between pairs of subspaces. Only used when --data_type==uos and K must be even.')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
+    parser.add_argument('--noise_std', type=float, default=0, help='Stdev of noise in data. Only used when data_type==uos')
 
     args = parser.parse_args()
 
@@ -91,11 +92,12 @@ def main():
     N = N_k * K
     d = args.data_dim
     batch_size = args.batch_size
+    noise_std = args.noise_std
 
     if data_type == 'uos':
         r = args.rank
         angle = args.angle
-        test_set, test_loader = get_uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle)
+        test_set, test_loader = get_uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle, noise_std=noise_std)
     elif data_type == 'cifar10_mcr2':
         test_set, test_loader = get_cifar10_mcr2_dataset(N_k, K, root='./datasets/cifar10_mcr2/', features_fname='test_features.npy', labels_fname='test_labels.npy', batch_size=batch_size)
 

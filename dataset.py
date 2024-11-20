@@ -22,7 +22,7 @@ class SyntheticDataset(Dataset):
 
         return sample, label
 
-def get_uos_dataset(N_k, K, d, r, orthogonal=False, batch_size=128, seed=0, angle=0):
+def get_uos_dataset(N_k, K, d, r, orthogonal=False, batch_size=128, seed=0, angle=None, noise_std=0):
     '''
     N_k: number of samples per class
     K: number of classes
@@ -31,7 +31,8 @@ def get_uos_dataset(N_k, K, d, r, orthogonal=False, batch_size=128, seed=0, angl
     orthogonal: make subspace bases orthogonal to each other
     batch_size: batch size
     angle: minimum principal angle (in degrees) between pairs of subspaces
-        - angle = 0 --> generate subspaces uniformly at random
+        - angle = None --> generate subspaces uniformly at random
+    std: variance of noise (default 0)
     '''
 
     N = N_k * K # total number of samples
@@ -39,7 +40,7 @@ def get_uos_dataset(N_k, K, d, r, orthogonal=False, batch_size=128, seed=0, angl
     # Generate subspace bases randomly
     np.random.seed(seed)
 
-    if angle == 0: # Generate subspaces randomly
+    if angle is None: # Generate subspaces randomly
         if orthogonal:
             U = ortho_group.rvs(d)
             bases = [ U[:, i*r:(i+1)*r] for i in range(K) ]
@@ -68,7 +69,7 @@ def get_uos_dataset(N_k, K, d, r, orthogonal=False, batch_size=128, seed=0, angl
 
 
     # Create samples and labels
-    samples = np.array( [bases[i] @ np.random.randn(r, N_k) for i in range(K)] ) # Randomly generate samples in each subspace
+    samples = np.array( [bases[i] @ np.random.randn(r, N_k) + noise_std*np.random.randn(d, N_k) for i in range(K)] ) # Randomly generate samples in each subspace
     samples = np.transpose(samples, axes=(0, 2, 1)) # N_k x K x d
     samples = np.float32( np.reshape(samples, (N, d)) ) # N x d
 

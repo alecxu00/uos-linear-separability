@@ -135,11 +135,8 @@ def main():
         test_loss, test_acc = test(model, device, test_loader, N, criterion)
         trial_test_accs.append(test_acc)
         test_state = {
-            'state_dict': model.state_dict(),
             'test_loss': test_loss,
             'test_accuracy': test_acc,
-            'test_set': test_set.samples,
-            'test_labels': test_set.labels
         }
 
         print("Saving test results\n")

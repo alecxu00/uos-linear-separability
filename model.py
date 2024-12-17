@@ -1,13 +1,13 @@
-from typing import Callable
+from typing import Callable, Union
 import numpy as np
 import torch
-import torch.nn as nn 
+import torch.nn as nn
 
 
 # Hybrid network implementation
 class HybridNet(nn.Module):
     def __init__(self, in_dim, hidden_dim, num_classes, num_layers, num_nonlinear_layers=1,
-                 activation: nn.Module | Callable[[torch.Tensor], torch.Tensor]=nn.ReLU(),
+                 activation: Union[nn.Module, Callable[[torch.Tensor], torch.Tensor]]=nn.ReLU(),
                  bias=False, init_method='gaussian', var=1e-2):
 
         super(HybridNet, self).__init__()

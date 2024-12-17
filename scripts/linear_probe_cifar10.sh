@@ -21,7 +21,7 @@ do
 		for data_type in "${data_types[@]}"
 		do
 			model_path="../save/hybrid/cifar10_init/width_${width}_depth_7_nonlinear_depth_6_10_classes_relu_activation_seed_0/trial_${trial}"
-			python3 ../linear_probe.py \
+			python3 ../linear_probe_post_train.py \
 			--model_path $model_path \
 			--data_dim 3072 \
 			--hidden_dim $width \
@@ -29,6 +29,7 @@ do
 			--nonlinear_depth 6 \
 			--data_type $data_type \
 			--num_classes 10 \
+                        --to_probe true \
 			--samples_per_class 1000
 		done
 	done

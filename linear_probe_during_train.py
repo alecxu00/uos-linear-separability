@@ -127,6 +127,49 @@ def eval_epoch_linear(model, linear_model, layer_idx, device, loader, num_sample
     return linear_eval_loss, linear_eval_acc
 
 
+# Linear probe
+def linear_probe(model, epoch, layers_to_probe, device, linear_lr, linear_epochs, linear_patience, train_loader, val_loader, checkpoint_dir, D, K, N):
+    for layer_idx in range(layers_to_probe):
+        linear_model = LinearClassifier(D, K)
+        linear_model = linear_model.to(device)
+
+        linear_criterion = nn.CrossEntropyLoss()
+        linear_optimizer = optim.SGD(linear_model.parameters(), lr=linear_lr, momentum=0.9, weight_decay=1e-4)
+        linear_scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(linear_optimizer, T_0=linear_epochs, eta_min=linear_lr/1000)
+        linear_early_stopping = EarlyStopping(patience=linear_patience)
+
+        min_linear_val_acc = float('Inf')
+        for linear_epoch in range(1, linear_epochs+1):
+            # Linear probe training
+            linear_train_loss, linear_train_acc = train_epoch_linear(model, linear_model, layer_idx, device, train_loader, linear_optimizer, N, linear_criterion)
+            linear_scheduler.step()
+
+            # Validation
+            linear_val_loss, linear_val_acc = eval_epoch_linear(model, linear_model, layer_idx, device, val_loader, N, linear_criterion)
+
+            # Early stopping criteria
+            last_linear_state = {
+                'train_accuracy': linear_train_acc,
+                'val_accuracy': linear_val_acc
+            }
+
+            if linear_val_acc < min_linear_val_acc:
+                min_linear_val_acc = linear_val_acc
+                best_linear_state = last_linear_state
+
+            if linear_early_stopping(linear_val_acc):
+                print("Done linear probing in {} epochs".format(linear_epoch))
+                break
+
+        # Save linear probe results
+        save_path = os.path.join(checkpoint_dir, 'layer_' + str(layer_idx) + '_best_epoch_' + str(epoch) + '_probe.pth')
+        torch.save(best_linear_state, save_path)
+
+        save_path = os.path.join(checkpoint_dir, 'layer_' + str(layer_idx) + '_last_epoch_' + str(epoch) + '_probe.pth')
+        torch.save(last_linear_state, save_path)
+
+
+
 # Parse command line arguments
 def parse_train_args():
     parser = argparse.ArgumentParser()
@@ -164,6 +207,7 @@ def parse_train_args():
 
 
     # Linear probing settings
+    parser.add_argument('--layers_to_probe', type=int, default=1, help='Number of layers to linear probe.')
     parser.add_argument('--linear_epochs', type=int, default=1000, help='Max linear probing epochs')
     parser.add_argument('--linear_batch_size', type=int, default=128, help='Linear probing batch size')
     parser.add_argument('--linear_lr', type=float, default=1e-2, help='Initial linear probing learning rate')
@@ -217,10 +261,12 @@ def main():
     lr = args.lr
     patience = args.patience
 
+    layers_to_probe = args.layers_to_probe
     linear_epochs = args.linear_epochs
     linear_lr = args.linear_lr
     linear_batch_size = args.linear_batch_size
     linear_patience = args.linear_patience
+
 
     trial_train_accs = []
     trial_val_accs = []
@@ -266,6 +312,10 @@ def main():
 
         #scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[epochs//3, 2*epochs//3], gamma=0.1)
         scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=epochs, eta_min=lr/100)
+        early_stopping = EarlyStopping(patience=patience)
+
+        # Linear probe model initialization
+        linear_probe(model, 0, layers_to_probe, device, linear_lr, linear_epochs, linear_patience, train_loader, val_loader, checkpoint_dir, D, K, N)
 
         # Training
         min_val_loss = float('Inf')
@@ -277,54 +327,14 @@ def main():
             # Cross-validation
             val_loss, val_acc = eval_epoch(model, device, val_loader, N, criterion, epoch)
 
-            # Linear probe first-layer features
-            linear_model = LinearClassifier(D, K)
-            linear_model = linear_model.to(device)
-
-            linear_criterion = nn.CrossEntropyLoss()
-            linear_optimizer = optim.SGD(linear_model.parameters(), lr=linear_lr, momentum=0.9, weight_decay=1e-4)
-            linear_scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(linear_optimizer, T_0=linear_epochs, eta_min=linear_lr/1000)
-            linear_early_stopping = EarlyStopping(patience=linear_patience)
-
-            min_linear_val_acc = float('Inf')
-            for linear_epoch in range(1, linear_epochs+1):
-                # Linear probe training
-                linear_train_loss, linear_train_acc = train_epoch_linear(model, linear_model, 0, device, train_loader, linear_optimizer, N, linear_criterion)
-                scheduler.step()
-
-                # Validation
-                linear_val_loss, linear_val_acc = eval_epoch_linear(model, linear_model, 0, device, val_loader, N, linear_criterion)
-
-                # Early stopping criteria
-                last_linear_state = {
-                    'train_accuracy': linear_train_acc,
-                    'val_accuracy': linear_val_acc
-                }
-
-                if linear_val_acc < min_linear_val_acc:
-                    min_linear_val_acc = linear_val_acc
-                    best_linear_state = last_linear_state
-
-                if linear_early_stopping(linear_val_acc):
-                   print("Done linear probing in {} epochs".format(linear_epoch))
-                   break
-
-            # Save linear probe results
-            save_path = os.path.join(checkpoint_dir, 'best_epoch_' + str(epoch) + '_probe.pth')
-            torch.save(best_linear_state, save_path)
-
-            save_path = os.path.join(checkpoint_dir, 'last_epoch_' + str(epoch) + '_probe.pth')
-            torch.save(last_linear_state, save_path)
-
+            # Linear probe early-layer features
+            linear_probe(model, epoch, layers_to_probe, device, linear_lr, linear_epochs, linear_patience, train_loader, val_loader, checkpoint_dir, D, K, N)
 
             # Print training progress
             if epoch % 25 == 0:
                 print("Finish Epoch {}".format(epoch))
                 print("Train loss: {}, train accuracy: {}".format(train_loss, train_acc))
                 print("Val loss: {}, val accuracy: {}".format(val_loss, val_acc))
-
-                print('Epoch ' + str(epoch) + ' best probing train accuracy: ' + best_linear_state['train_accuracy'])
-                print('Epoch ' + str(epoch) + ' best probing val accuracy: ' + best_linear_state['val_accuracy'])
 
             if val_loss < min_val_loss: # Best training state
                 min_val_loss = val_loss

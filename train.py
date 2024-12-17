@@ -99,6 +99,7 @@ def parse_train_args():
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
     parser.add_argument('--lr', type=float, default=1e-2, help='Initial learning rate')
     parser.add_argument('--patience', type=int, default=100, help='Early stopping patience')
+    parser.add_argument('--to_probe', type=bool, default=False, help='Will intermediate layers be probed after training.')
 
     # Save directory
     parser.add_argument('--save_dir', type=str, default='./save/hybrid')
@@ -146,6 +147,7 @@ def main():
     epochs = args.epochs
     assert epochs >= 0
     lr = args.lr
+    to_probe = args.to_probe
 
     trial_train_accs = []
     trial_val_accs = []
@@ -247,9 +249,10 @@ def main():
                     'train_accuracies': train_accs,
                     'val_losses': val_losses,
                     'val_accuracies': val_accs,
-                    'train_loader': train_loader,
-                    'val_loader': val_loader
-                 }
+                }
+                if to_probe:
+                    last_state['train_loader'] = train_loader
+                    last_state['val_loader'] = val_loader
 
                 if val_loss < min_val_loss: # Best training state
                     min_val_loss = val_loss

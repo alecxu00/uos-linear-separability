@@ -1,13 +1,13 @@
 #!/bin/bash
 
-#SBATCH --job-name=run_activations
+#SBATCH --job-name=rank_sweep
 #SBATCH --account=qingqu1
-#SBATCH --partition=gpu
+#SBATCH --partition=spgpu
 #SBATCH --gpus=1
 #SBATCH --ntasks-per-gpu=1
 #SBATCH --mem-per-gpu=16G
 #SBATCH --time=01-00:00:00
-#SBATCH --output=../logs/run_activations_d128_r4_K2_quadratic.log
+#SBATCH --output=../logs/rank_sweep/rank_sweep_d128_r4_K2_quadratic_W1_trained.log
 
 #declare -a widths=(32 64 128 256 512 1024)
 declare -a widths=(8 16 32 64 128 256 512 1024)
@@ -17,7 +17,7 @@ DEPTH=2
 NONLINEAR_DEPTH=1
 
 INIT="gaussian"
-INIT_VAR=1e-2
+INIT_VAR=1
 
 SEED=0
 
@@ -27,7 +27,7 @@ SAMPLES_PER_CLASS=5000
 DATA_DIM=128
 RANK=4
 #ANGLE=0
-NOISE_STD=0
+NOISE_STD=$RANK / (2*$DATA_DIM)
 
 EPOCHS=500
 BATCH_SIZE=128
@@ -41,7 +41,7 @@ do
 	for ACTIVATION in "${activations[@]}"
 	do
 		python3 ../train.py \
-		--hidden_dim $WIDTH --depth $DEPTH --nonlinear_depth $NONLINEAR_DEPTH --activation $ACTIVATION \
+		--hidden_dim $WIDTH --depth $DEPTH --nonlinear_depth $NONLINEAR_DEPTH --activation $ACTIVATION --train_W1 \
 		--init $INIT --init_var $INIT_VAR \
 		--seed $SEED --data_type $DATA_TYPE --num_classes $NUM_CLASSES --samples_per_class $SAMPLES_PER_CLASS \
 		--data_dim $DATA_DIM --rank $RANK --noise_std $NOISE_STD \

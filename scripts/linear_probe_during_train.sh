@@ -2,12 +2,12 @@
 
 #SBATCH --job-name=linear_probe_during_train
 #SBATCH --account=qingqu1
-#SBATCH --partition=gpu
+#SBATCH --partition=spgpu
 #SBATCH --gpus=1
 #SBATCH --ntasks-per-gpu=1
 #SBATCH --mem-per-gpu=32G
 #SBATCH --time=07-00:00:00
-#SBATCH --output=../logs/linear_probe_during_train_d16_r4_shallow_relu.log
+#SBATCH --output=../logs/linear_probe_during_train_d32_r4_shallow_relu.log
 
 #declare -a widths=(32 64 128 256 512 1024)
 declare -a widths=(128)
@@ -25,7 +25,7 @@ SEED=0
 DATA_TYPE="uos"
 NUM_CLASSES=2
 SAMPLES_PER_CLASS=5000
-DATA_DIM=16
+DATA_DIM=32
 RANK=4
 #ANGLE=0
 NOISE_STD=0

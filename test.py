@@ -57,7 +57,7 @@ def parse_test_args():
     parser.add_argument('--seed', type=int, default=0)
 
     # Data
-    parser.add_argument('--data_type', type=str, default='uos', choices=['uos', 'cifar10', 'cifar10_mcr2'])
+    parser.add_argument('--data_type', type=str, default='uos', choices=['uos', 'cifar10', 'cifar10_mcr2', 'fashion_mnist'])
     parser.add_argument('--num_classes', type=int, default=5)
     parser.add_argument('--samples_per_class', type=int, default=100)
     parser.add_argument('--data_dim', type=int, default=16)
@@ -99,7 +99,9 @@ def main():
         angle = args.angle
         test_set, test_loader = get_uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle, noise_std=noise_std)
     elif data_type == 'cifar10_mcr2':
-        test_set, test_loader = get_cifar10_mcr2_dataset(N_k, K, root='./datasets/cifar10_mcr2/', features_fname='test_features.npy', labels_fname='test_labels.npy', batch_size=batch_size)
+        test_set, test_loader = get_cifar10_mcr2_dataset(N_k, K, root='../datasets/cifar10_mcr2/', features_fname='test_features.npy', labels_fname='test_labels.npy', batch_size=batch_size)
+    elif data_type == 'fashion_mnist':
+        test_set, test_loader = get_fmnist_dataset(N_k, K, '/scratch/qingqu_root/qingqu1/alecx/fashion_mnist/', batch_size, train=False)
 
     # Initialize model
     D = args.hidden_dim

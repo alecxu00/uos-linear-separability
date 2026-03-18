@@ -77,6 +77,7 @@ def parse_train_args():
     parser.add_argument('--nonlinear_depth', type=int, default=1)
     parser.add_argument('--activation', type=str, default='relu', help='Activation function',
                         choices=['relu', 'sigmoid', 'quadratic', 'gelu', 'elu', 'leaky-relu', 'step'])
+    parser.add_argument('--train_W1', action='store_true')
 
     # Initialization method
     parser.add_argument('--init', type=str, default='gaussian', choices=['gaussian', 'uniform', 'default'])
@@ -86,7 +87,7 @@ def parse_train_args():
     parser.add_argument('--seed', type=int, default=0)
 
     # Data
-    parser.add_argument('--data_type', type=str, default='uos', choices=['uos', 'cifar10', 'cifar10_mcr2'])
+    parser.add_argument('--data_type', type=str, default='uos', choices=['uos', 'cifar10', 'cifar10_mcr2', 'fashion_mnist'])
     parser.add_argument('--num_classes', type=int, default=5)
     parser.add_argument('--samples_per_class', type=int, default=100)
     parser.add_argument('--data_dim', type=int, default=16)
@@ -141,6 +142,7 @@ def main():
     activation = activations[activation_str]
     init_ = args.init
     init_var = args.init_var
+    train_W1 = args.train_W1
 
     # Train num_trials different models
     num_trials = args.num_trials
@@ -161,11 +163,14 @@ def main():
             train_set, train_loader = get_uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle, noise_std=noise_std)
             val_set, val_loader = get_uos_dataset(N_k, K, d, r, batch_size=batch_size, angle=angle, noise_std=noise_std)
         elif data_type == 'cifar10_mcr2':
-            train_set, train_loader = get_cifar10_mcr2_dataset(N_k, K, root='./datasets/cifar10_mcr2/', features_fname='train_features.npy', labels_fname='train_labels.npy', batch_size=batch_size)
-            val_set, val_loader = get_cifar10_mcr2_dataset(N_k, K, root='./datasets/cifar10_mcr2/', features_fname='val_features.npy', labels_fname='val_labels.npy', batch_size=batch_size)
+            train_set, train_loader = get_cifar10_mcr2_dataset(N_k, K, root='../datasets/cifar10_mcr2/', features_fname='train_features.npy', labels_fname='train_labels.npy', batch_size=batch_size)
+            val_set, val_loader = get_cifar10_mcr2_dataset(N_k, K, root='../datasets/cifar10_mcr2/', features_fname='val_features.npy', labels_fname='val_labels.npy', batch_size=batch_size)
         elif data_type == 'cifar10':
             train_set, train_loader = get_cifar10_dataset(N_k, K, '/scratch/qingqu_root/qingqu1/alecx/cifar10/', batch_size, train=True)
             val_set, val_loader = get_cifar10_dataset(N_k, K, '/scratch/qingqu_root/qingqu1/alecx/cifar10/', batch_size, train=False)
+        elif data_type == 'fashion_mnist':
+            train_set, train_loader = get_fmnist_dataset(N_k, K, '/scratch/qingqu_root/qingqu1/alecx/fashion_mnist/', batch_size, train=True)
+            val_set, val_loader = get_fmnist_dataset(N_k, K, '/scratch/qingqu_root/qingqu1/alecx/fashion_mnist/', batch_size, train=False)
 
         # Set up save path for trial
         save_dir = args.save_dir
@@ -173,6 +178,9 @@ def main():
             save_subdir = f"width_{D}_depth_{L}_nonlinear_depth_{nonlinear_L}_{K}_classes_rank_{r}_{activation_str}_activation_seed_{seed}"
         else:
             save_subdir = f"width_{D}_depth_{L}_nonlinear_depth_{nonlinear_L}_{K}_classes_{activation_str}_activation_seed_{seed}"
+
+        if train_W1:
+            save_subdir = save_subdir + '_trained_W1'
 
         checkpoint_dir = os.path.join(save_dir, save_subdir, 'trial_' + str(i))
         if not os.path.exists(checkpoint_dir):
@@ -183,8 +191,10 @@ def main():
                          num_layers=L, num_nonlinear_layers=nonlinear_L,
                          activation=activation, init_method=init_, var=init_var)
 
-        for param in model.layers[0].parameters(): # Freeze first weight matrix
-            param.requires_grad = False
+        if not train_W1:
+            for param in model.layers[0].parameters(): # Freeze first weight matrix
+                param.requires_grad = False
+
         model = model.to(device)
 
         if epochs == 0:

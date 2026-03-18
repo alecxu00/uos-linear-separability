@@ -2,30 +2,30 @@
 
 #SBATCH --job-name=run_activations
 #SBATCH --account=qingqu1
-#SBATCH --partition=gpu
+#SBATCH --partition=spgpu
 #SBATCH --gpus=1
 #SBATCH --ntasks-per-gpu=1
 #SBATCH --mem-per-gpu=16G
 #SBATCH --time=01-00:00:00
-#SBATCH --output=../logs/run_activations_d256_r8_K32_relu.log
+#SBATCH --output=../logs/run_activations_d32_r4_K3_quadratic.log
 
 #declare -a widths=(32 64 128 256 512 1024)
 declare -a widths=(8 16 32 64 128 256)
-declare -a activations=("relu") #"elu" "gelu" "leaky-relu" "quadratic")
+declare -a activations=("quadratic") #"elu" "gelu" "leaky-relu" "quadratic")
 
 DEPTH=2
 NONLINEAR_DEPTH=1
 
 INIT="gaussian"
-INIT_VAR=1e-2
+INIT_VAR=1
 
 SEED=0
 
 DATA_TYPE="uos"
-NUM_CLASSES=32
+NUM_CLASSES=3
 SAMPLES_PER_CLASS=5000
-DATA_DIM=256
-RANK=8
+DATA_DIM=32
+RANK=4
 #ANGLE=0
 NOISE_STD=0
 

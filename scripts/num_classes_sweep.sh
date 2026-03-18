@@ -2,30 +2,30 @@
 
 #SBATCH --job-name=num_classes_sweep
 #SBATCH --account=qingqu1
-#SBATCH --partition=gpu
+#SBATCH --partition=spgpu
 #SBATCH --gpus=1
 #SBATCH --ntasks-per-gpu=1
 #SBATCH --mem-per-gpu=16G
 #SBATCH --time=01-00:00:00
-#SBATCH --output=../logs/num_classes_sweep_d128_r16_K3_relu.log
+#SBATCH --output=../logs/num_classes_sweep/num_classes_sweep_d128_r4_K2_quadratic.log
 
 #declare -a widths=(32 64 128 256 512 1024)
 declare -a widths=(8 16 32 64 128 256 512 1024)
-declare -a activations=("relu") #"elu" "gelu" "leaky-relu" "quadratic")
+declare -a activations=("quadratic") #"elu" "gelu" "leaky-relu" "quadratic")
 
 DEPTH=2
 NONLINEAR_DEPTH=1
 
 INIT="gaussian"
-INIT_VAR=1e-2
+INIT_VAR=1
 
 SEED=0
 
 DATA_TYPE="uos"
-NUM_CLASSES=3
+NUM_CLASSES=2
 SAMPLES_PER_CLASS=5000
 DATA_DIM=128
-RANK=16
+RANK=4
 #ANGLE=0
 NOISE_STD=0
 

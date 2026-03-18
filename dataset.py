@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset, DataLoader
-from torchvision.datasets import CIFAR10
+from torchvision.datasets import CIFAR10, FashionMNIST
 from PIL import Image
 from scipy.stats import ortho_group
 import os
@@ -90,7 +90,7 @@ def get_uos_dataset(N_k, K, d, r, orthogonal=False, batch_size=128, seed=0, angl
 
 # Partial dataset for CIFAR-10
 class CIFAR10PartialDataset(CIFAR10):
-    def __init__(self, root, K, N_k, train=True, transform=None, download=True, **kwargs):
+    def __init__(self, root, K, N_k, max_classes=10, train=True, transform=None, download=True, **kwargs):
         super().__init__(root=root, train=train, transform=transform, download=download, **kwargs)
 
         if K == 0:
@@ -99,9 +99,10 @@ class CIFAR10PartialDataset(CIFAR10):
         else:
             print(f"Using Cifar10 with only {K} classes! \n")
             self.targets = np.array(self.targets)
+            classes = np.random.randint(low=0, high=max_classes, size=(K,))
             all_data = []
             all_label = []
-            for k in range(K):
+            for k in classes:
                 idx = np.random.randint(low=0, high=np.count_nonzero(self.targets == k), size=(N_k,))
                 all_data.append(self.data[self.targets == k][idx])
                 all_label.append(np.ones(N_k) * k)
@@ -206,3 +207,72 @@ def get_cifar10_mcr2_dataset(N_k, K, root='./datasets/cifar10/', features_fname=
     cifar10_mcr2_loader = DataLoader(cifar10_mcr2_dataset, batch_size=batch_size, shuffle=True)
 
     return cifar10_mcr2_dataset, cifar10_mcr2_loader
+
+
+# Partial dataset for Fashion MNIST
+class FashionMNISTPartialDataset(FashionMNIST):
+    def __init__(self, root, K, N_k, max_classes=10, train=True, transform=None, download=True, **kwargs):
+        super().__init__(root=root, train=train, transform=transform, download=download, **kwargs)
+
+        if K == 0:
+            self.data = []
+            self.targets = []
+        else:
+            print(f"Using Fashion MNIST with only {K} classes! \n")
+            self.targets = np.array(self.targets)
+            classes = np.random.randint(low=0, high=max_classes, size=(K,))
+            all_data = []
+            all_label = []
+            for k in range(K):
+                idx = np.random.randint(low=0, high=np.count_nonzero(self.targets == k), size=(N_k,))
+                all_data.append(self.data[self.targets == k][idx])
+                all_label.append(np.ones(N_k) * k)
+
+            self.data = np.concatenate(all_data, 0)
+            self.targets = np.concatenate(all_label)
+
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+        img, target = self.data[index], int(self.targets[index])
+
+        # doing this so that it is consistent with all other datasets
+        # to return a PIL Image
+        img = Image.fromarray(img)
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        return img.flatten(), target
+    
+def get_fmnist_dataset(N_k, K, data_dir, batch_size, train=True, shuffle=True):
+    """
+    args:
+    @ data_dir: where dataset are stored or to be stored
+    @ batch_size: training and testing batch size
+    @ K: how many classes to use for the dataset
+    """
+
+    # Transform
+    transform_fmnist = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.1307,), (0.3081,)),
+            ])
+
+
+    data_set = FashionMNISTPartialDataset
+    transform_data = transform_fmnist
+
+    fmnist_dataset = data_set(data_dir, K, N_k,
+                        train=train, transform=transform_data)
+
+    # Dataloader
+    fmnist_loader = torch.utils.data.DataLoader(
+            fmnist_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=1)
+
+    return fmnist_dataset, fmnist_loader
